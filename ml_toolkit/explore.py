@@ -2,11 +2,10 @@ import pandas as pd
 import numpy as np
 
 
-def check_element_wise(df, column1, column2):
-    combine_count = df.groupby([column1, column2]).size().reset_index()
-    combine_len = len(combine_count.index)
-    first_len = len(combine_count[column1].unique())
-    second_len = len(combine_count[column2].unique())
+def check_element_wise(df, column1, column2, combine):
+    combine_len = len(df[combine].unique())
+    first_len = len(df[column1].unique())
+    second_len = len(df[column2].unique())
     print "first_unique: %s, second_unique: %s, combine_unique: %s" % (first_len, second_len, combine_len)
     if combine_len == second_len:
         return True

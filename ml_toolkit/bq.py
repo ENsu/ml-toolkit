@@ -48,6 +48,12 @@ class BQHandler:
         self.check_bq_job_status(job['id'].replace(job_id_start_with, ""))
         return job['id']
 
+    def get_df(self, query):
+        return pd.read_gbq(query=query, project_id=self.project_id, private_key=self.credential_path, verbose=False)
+
+    def query_to_df(self, query):
+        return pd.read_gbq(query=query, project_id=self.project_id, private_key=self.credential_path, verbose=False)
+
     # cannot be used at this time, need further generalization in the future
     # def create_random_sample_tb(self, sample_size, from_tb, dest_tb):
     #     random_query = '\
