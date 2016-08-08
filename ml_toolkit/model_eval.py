@@ -28,3 +28,45 @@ def mapk(truth, predict, k=5):
         sum = sum + ml_metrics.apk([v], predict[i], k)
         count = count + 1
     return float(sum)/count
+
+
+def multiclass_log_loss_by_row(y_true, y_pred, eps=1e-15):
+    predictions = np.clip(y_pred, eps, 1 - eps)
+
+    # normalize row sums to 1
+    predictions /= predictions.sum()
+
+    actual = np.zeros(y_pred.shape)
+    actual[y_true] = 1
+    return -1.0 * np.dot(actual, np.log(predictions))
+
+
+def multiclass_log_loss(y_true, y_pred, eps=1e-15):
+    """Multi class version of Logarithmic Loss metric, ref from 
+    https://www.kaggle.com/c/predict-closed-questions-on-stack-overflow/forums/t/2644/multi-class-log-loss-function
+
+    Parameters
+    ----------
+    y_true : array, shape = [n_samples] the id of right samples
+    y_pred : array, shape = [n_samples, n_classes]
+
+    Returns
+    -------
+    loss : float
+    
+    test:
+    multiclass_log_loss(np.array([0,1,2]),np.array([[1,0,0],[0,1,0],[0,0,1]]))
+    >> 2.10942374679e-15
+    multiclass_log_loss(np.array([0,1,2]),np.array([[1,1,1],[0,1,0],[0,0,1]]))
+    >> 0.366204096223
+    """
+    predictions = np.clip(y_pred, eps, 1 - eps)
+
+    # normalize row sums to 1
+    predictions /= predictions.sum(axis=1)[:, np.newaxis]
+
+    actual = np.zeros(y_pred.shape)
+    rows = actual.shape[0]
+    actual[np.arange(rows), y_true.astype(int)] = 1
+    vsota = np.sum(actual * np.log(predictions))
+    return -1.0 / rows * vsota

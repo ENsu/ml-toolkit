@@ -27,7 +27,7 @@ class BQHandler:
         # print "job progress: %s" % job['status']['state']
         return job['status']['state']
 
-    def bq_query_to_table(self, query, table):
+    def query_to_table(self, query, table):
         dataset = table.split('.')[0]
         table = table.split('.')[1]
         job = self.bigquery.jobs().insert(projectId=self.project_id,
@@ -51,11 +51,35 @@ class BQHandler:
     def get_df(self, query):
         return pd.read_gbq(query=query, project_id=self.project_id, private_key=self.credential_path, verbose=False)
 
-    def query_to_df(self, query):
-        return pd.read_gbq(query=query, project_id=self.project_id, private_key=self.credential_path, verbose=False)
+    def df_to_table(self, df, table):
+        return df.to_gbq(destination_table=table, project_id=self.project_id, private_key=self.credential_path)
+
+    def get_tb_len(self, table):
+        datasetId = table.split('.')[0]
+        tableId = table.split('.')[1]
+        response = self.bigquery.tables().get(projectId=self.project_id, datasetId=datasetId, tableId=tableId).execute()
+        return response["numRows"]
+
+    def create_hash_id(self, origin_tb, target_tb):
+        query = 'SELECT HASH(INTEGER(rand()*100000000000000000)) AS hash_id, * FROM [%s]' % origin_tb
+        return self.query_to_table(query, target_tb)
 
     # cannot be used at this time, need further generalization in the future
-    # def create_random_sample_tb(self, sample_size, from_tb, dest_tb):
+    def randomly_split_train_valid(self, from_tb, train_index_tb, valid_index_tb, index_col, strat_col, split_rate="0.9"):
+        query = '\
+            SELECT %s \
+            FROM (SELECT %s, a.%s, num*%s AS expect_num, rand() as _rand, row_number() over (partition by a.%s order by _rand) AS row_num \
+            FROM [%s] a INNER JOIN (select %s, count(*) as num from [%s] group by %s) b \
+            ON a.%s == b.%s) \
+            WHERE row_num < expect_num + 1 \
+        ' % (index_col, index_col, strat_col, split_rate, strat_col, from_tb, strat_col, from_tb, strat_col, strat_col, strat_col)
+        train_tb_job_id = self.query_to_table(query, train_index_tb)
+        query = 'SELECT %s FROM [%s] WHERE (%s NOT IN (SELECT %s FROM [%s]))' % (index_col, from_tb, index_col, index_col, train_index_tb)
+        valid_tb_job_id = self.query_to_table(query, valid_index_tb)
+        return (train_tb_job_id, valid_tb_job_id)
+
+    # cannot be used at this time, need further generalization in the future
+    # def create_random_sample_tb(self, sample_size, from_tb, to_tb, ):
     #     random_query = '\
     #     SELECT hash_id \
     #     FROM (SELECT a.hotel_cluster, hash_id, rate*%s AS num, rand() as _rand, row_number() over (partition by a.hotel_cluster order by _rand) AS row_num \
@@ -63,7 +87,7 @@ class BQHandler:
     #     ON a.hotel_cluster == b.hotel_cluster) \
     #     WHERE row_num < num + 1 \
     #     ' % (sample_size, from_tb)
-    #     return self.bq_query_to_table(random_query, dest_tb)
+    #     return self.query_to_table(random_query, dest_tb)
 
     # cannot be used at this time, need further generalization in the future
     # def create_sampled_train_valid_table(self, valid_size, columns):
