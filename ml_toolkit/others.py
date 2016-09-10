@@ -8,9 +8,11 @@ def apply_with_log(series, apply_funciton):
 
 
 def get_BQschema(df):
-    type_map_dict = {"int64":"INTEGER", "float64":"FLOAT", "object":"STRING"}
+    type_map_dict = {"int64":"INTEGER", "float64":"FLOAT", "object":"STRING", "bool":"BOOLEAN"}
+    null_count_list = df.isnull().sum().tolist()
     field_list = []
     for i in range(len(df.columns)):
         df_type = type_map_dict[str(df.dtypes[i])]
-        field_list.append({"name":df.columns[i], "type":df_type})
+        mode = "NULLABLE" if null_count_list[i] else "REQUIRED"
+        field_list.append({"name":df.columns[i], "type":df_type, "mode": mode})
     return json.dumps(field_list)

@@ -3,6 +3,7 @@ import pandas as pd
 from oauth2client.service_account import ServiceAccountCredentials
 from httplib2 import Http
 from apiclient.discovery import build
+import string
 
 
 class BQHandler:
@@ -54,11 +55,18 @@ class BQHandler:
     def df_to_table(self, df, table):
         return df.to_gbq(destination_table=table, project_id=self.project_id, private_key=self.credential_path)
 
-    def get_tb_len(self, table):
+    def get_tb_resource(self, table):
         datasetId = table.split('.')[0]
         tableId = table.split('.')[1]
-        response = self.bigquery.tables().get(projectId=self.project_id, datasetId=datasetId, tableId=tableId).execute()
+        return self.bigquery.tables().get(projectId=self.project_id, datasetId=datasetId, tableId=tableId).execute()
+
+    def get_tb_len(self, table):
+        response = self.get_tb_resource(table)
         return response["numRows"]
+
+    def get_tb_columns(self, table):
+        response = self.get_tb_resource(table)
+        return [f['name'] for f in response['schema']['fields']]
 
     def create_hash_id(self, origin_tb, target_tb):
         query = 'SELECT HASH(INTEGER(rand()*100000000000000000)) AS hash_id, * FROM [%s]' % origin_tb
@@ -77,6 +85,37 @@ class BQHandler:
         query = 'SELECT %s FROM [%s] WHERE (%s NOT IN (SELECT %s FROM [%s]))' % (index_col, from_tb, index_col, index_col, train_index_tb)
         valid_tb_job_id = self.query_to_table(query, valid_index_tb)
         return (train_tb_job_id, valid_tb_job_id)
+
+    def make_pivot_count(table, index_col, col_col, target_table, prefix="", rank_limit=0):
+        # first get all the possible column value
+        query = "select %s, count(*) as count from [%s] group by %s" % (col_col, table, col_col)
+        col_val_list = self.get_df(query).sort_values('count', ascending=False)[col_col].tolist()
+        if rank_limit > 0:
+            col_val_list = col_val_list[:rank_limit]
+        col_val_str = ', '.join(['sum(IF(STRING(%s)="%s", 1, 0)) as %s' % (col_col, col_val, prefix+(str(col_val).replace(" ", ""))) for col_val in col_val_list])
+        query = "select %s, %s from [%s] group by %s" % (index_col, col_val_str, table, index_col)
+        return self.query_to_table(query, target_table)
+
+    def concat_tables(self, table_list, merge_index, target_table):
+        alphabetical_list = list(string.ascii_lowercase)
+        total_fields = []
+        for i, t in enumerate(table_list):
+            t_fields_list = self.get_tb_columns(t)
+            t_fields_list.remove(merge_index)
+            if len(set(total_fields) & set(t_fields_list)) != 0:
+                print "find repeated columns in %s, break down" % t
+                return None
+            t_fields_list = ["%s.%s AS %s" % (alphabetical_list[i], field, field) for field in t_fields_list]
+            total_fields = total_fields + t_fields_list
+        columns_str = ", ".join(total_fields)
+        merge_str = ""
+        merge_str = "".join(["inner join %s %s on a.%s == %s.%s " %
+                              (t, alphabetical_list[i+1], merge_index, alphabetical_list[i+1], merge_index) for (i, t) in enumerate(table_list[1:])])
+        query = """
+            select a.%s AS %s, %s
+            from %s a %s
+        """ % (merge_index, merge_index, columns_str, table_list[0], merge_str)
+        return self.query_to_table(query, target_table)
 
     # cannot be used at this time, need further generalization in the future
     # def create_random_sample_tb(self, sample_size, from_tb, to_tb, ):
