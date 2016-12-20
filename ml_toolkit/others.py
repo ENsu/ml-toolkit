@@ -1,5 +1,6 @@
 import tqdm
 import json
+import string
 
 
 def apply_with_log(series, apply_funciton):
@@ -16,3 +17,9 @@ def get_BQschema(df):
         mode = "NULLABLE" if null_count_list[i] else "REQUIRED"
         field_list.append({"name":df.columns[i], "type":df_type, "mode": mode})
     return json.dumps(field_list)
+
+
+def get_alphabet_list():
+    alphabetical_list = list(string.ascii_lowercase) + ["a%s" % s for s in list(string.ascii_lowercase)] + ["b%s" % s for s in list(string.ascii_lowercase)]
+    alphabetical_list.remove('as') # as is a special term
+    return alphabetical_list
